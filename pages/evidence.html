@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الشواهد والمرفقات | نظام توثيق الأداء - فرقان</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+  .card-item { border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px; background:#fffdf8; box-shadow: var(--shadow-card); }
+  .card-item .card-item-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .card-item .card-item-head .title { font-weight:700; color: var(--maroon-900); }
+  .btn-remove { background:transparent; border:none; color:var(--status-fail); cursor:pointer; font-size:.9rem; }
+  .field-label { font-size:.82rem; font-weight:600; margin-bottom:4px; display:block; }
+  .form-actions { position: sticky; bottom: 0; background: rgba(250,247,242,0.95); backdrop-filter: blur(4px); padding: 14px 0; margin-top: 10px; }
+  .upload-status { font-size:.78rem; margin-top:6px; }
+  .upload-status.uploading { color: var(--status-near); }
+  .upload-status.done { color: var(--status-done); }
+  .upload-status.error { color: var(--status-fail); }
+  .confidentiality-badge { font-size:.72rem; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .conf-public { background:#e8f6ee; color:var(--status-done); }
+  .conf-internal { background:#fbf1dd; color:var(--status-near); }
+  .conf-secret { background:#fdecea; color:var(--status-fail); }
+</style>
+</head>
+<body>
+
+<div id="topbar-mount"></div>
+
+<div class="page-wrap" style="max-width:860px;">
+  <div class="page-header">
+    <p><a href="../dashboard.html"><i class="fa-solid fa-arrow-right"></i> رجوع للوحة التحكم</a></p>
+    <h2><i class="fa-solid fa-paperclip"></i> الشواهد والمرفقات</h2>
+    <p>أرفقي الملفات الداعمة، أو ألصقي رابطًا خارجيًا مباشرة.</p>
+  </div>
+
+  <div id="evidenceContainer"></div>
+
+  <button type="button" class="btn-add mb-4" id="addEvidenceBtn">
+    <i class="fa-solid fa-plus"></i> إضافة شاهد
+  </button>
+
+  <div class="form-actions d-flex justify-content-between">
+    <span class="text-muted small" id="lastSaved"></span>
+    <button type="button" class="btn-primary" id="saveBtn" style="width:auto; padding:12px 32px;">
+      <i class="fa-solid fa-floppy-disk"></i> حفظ الشواهد
+    </button>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "../js/auth.js";
+  import { renderTopbar } from "../js/components/topbar.js";
+  import { storage } from "../js/firebase/config.js";
+  import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+  import { getOrCreateDraftReport, loadReport, saveArraySection } from "../js/report-state.js";
+  import { showSaveToast } from "../js/components/form-helpers.js";
+  import { RepeatableList } from "../js/components/repeatable-list.js";
+  import { SECTIONS } from "../js/components/sections-config.js";
+
+  let reportId, list;
+
+  const EVIDENCE_TYPES = ["صورة","فيديو","مستند","رابط","سجل بيانات"];
+  const CONFIDENTIALITY = [
+    { value: "public", label: "عام", cls: "conf-public" },
+    { value: "internal", label: "داخلي", cls: "conf-internal" },
+    { value: "secret", label: "سري", cls: "conf-secret" }
+  ];
+
+  requireAuth(async (profile) => {
+    renderTopbar(profile, { homeHref: "../dashboard.html" });
+    reportId = await getOrCreateDraftReport(profile);
+    initList();
+    const report = await loadReport(reportId);
+    list.setItems(report?.evidence || []);
+    document.getElementById("saveBtn").addEventListener("click", onSave);
+  });
+
+  function initList() {
+    const container = document.getElementById("evidenceContainer");
+    list = new RepeatableList({
+      container,
+      itemLabel: "شاهد",
+      itemFactory: () => ({
+        title: "", type: "مستند", relatedSection: "", fileUrl: "",
+        externalLink: "", confidentiality: "internal", notes: ""
+      }),
+      renderItem: (item, i) => renderCard(item, i),
+      onAfterRender: (item, i, card) => bindCard(item, i, card)
+    });
+    document.getElementById("addEvidenceBtn").addEventListener("click", () => list.addItem());
+  }
+
+  function renderCard(item, i) {
+    const conf = CONFIDENTIALITY.find(c => c.value === item.confidentiality) || CONFIDENTIALITY[1];
+    return `
+    <div class="card-item" data-item-index="${i}">
+      <div class="card-item-head">
+        <span class="title">شاهد ${i + 1}${item.title ? ": " + item.title : ""}</span>
+        <div class="d-flex align-items-center gap-2">
+          <span class="confidentiality-badge ${conf.cls}">${conf.label}</span>
+          <button type="button" class="btn-remove" data-action="remove-item"><i class="fa-solid fa-trash"></i> حذف</button>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="field-label">عنوان الشاهد</label>
+          <input type="text" class="form-control" data-field="title" value="${escapeAttr(item.title)}">
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">نوع الشاهد</label>
+          <select class="form-control" data-field="type">
+            ${EVIDENCE_TYPES.map(t => `<option ${item.type===t?"selected":""}>${t}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="field-label">القسم المرتبط به</label>
+          <select class="form-control" data-field="relatedSection">
+            <option value="">اختاري...</option>
+            ${SECTIONS.map(s => `<option value="${s.key}" ${item.relatedSection===s.key?"selected":""}>${s.title}</option>`).join("")}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">درجة السرية</label>
+          <select class="form-control" data-field="confidentiality">
+            ${CONFIDENTIALITY.map(c => `<option value="${c.value}" ${item.confidentiality===c.value?"selected":""}>${c.label}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="field-label">رفع ملف</label>
+          <input type="file" class="form-control file-input">
+          <div class="upload-status" data-upload-status>${item.fileUrl ? `<i class="fa-solid fa-circle-check"></i> تم رفع ملف مسبقًا` : ""}</div>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">أو رابط خارجي</label>
+          <input type="url" class="form-control" data-field="externalLink" value="${escapeAttr(item.externalLink)}" placeholder="https://">
+        </div>
+
+        <div class="col-12">
+          <label class="field-label">ملاحظات</label>
+          <input type="text" class="form-control" data-field="notes" value="${escapeAttr(item.notes)}">
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function bindCard(item, i, card) {
+    if (!card) return;
+    const badge = card.querySelector(".confidentiality-badge");
+    const conf = CONFIDENTIALITY.find(c => c.value === item.confidentiality) || CONFIDENTIALITY[1];
+    if (badge) {
+      badge.className = `confidentiality-badge ${conf.cls}`;
+      badge.textContent = conf.label;
+    }
+
+    const fileInput = card.querySelector(".file-input");
+    if (fileInput && !fileInput._bound) {
+      fileInput._bound = true;
+      fileInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const statusEl = card.querySelector("[data-upload-status]");
+        statusEl.className = "upload-status uploading";
+        statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> جارٍ الرفع...`;
+        try {
+          const path = `reports/${reportId}/evidence/${Date.now()}_${file.name}`;
+          const storageRef = ref(storage, path);
+          await uploadBytes(storageRef, file);
+          const url = await getDownloadURL(storageRef);
+          item.fileUrl = url;
+          item.fileName = file.name;
+          statusEl.className = "upload-status done";
+          statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> تم رفع: ${file.name}`;
+        } catch (err) {
+          console.error(err);
+          statusEl.className = "upload-status error";
+          statusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> فشل الرفع، حاولي مجددًا`;
+        }
+      });
+    }
+  }
+
+  function escapeAttr(v) { return v === undefined || v === null ? "" : String(v).replace(/"/g, "&quot;"); }
+
+  async function onSave() {
+    try {
+      await saveArraySection(reportId, "evidence", list.getItems());
+      showSaveToast(`تم حفظ ${list.getItems().length} شاهد بنجاح`);
+      document.getElementById("lastSaved").textContent = "آخر حفظ: " + new Date().toLocaleString("ar-SA");
+    } catch (err) {
+      console.error(err);
+      showSaveToast("تعذر الحفظ، حاولي مجددًا", true);
+    }
+  }
+</script>
+</body>
+</html>

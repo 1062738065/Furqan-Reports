@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الأثر وقصص النجاح | نظام توثيق الأداء - فرقان</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+  .card-item { border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px; background:#fffdf8; box-shadow: var(--shadow-card); }
+  .card-item .card-item-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .card-item .card-item-head .title { font-weight:700; color: var(--maroon-900); }
+  .btn-remove { background:transparent; border:none; color:var(--status-fail); cursor:pointer; font-size:.9rem; }
+  .field-label { font-size:.82rem; font-weight:600; margin-bottom:4px; display:block; }
+  .privacy-note { background:var(--gold-100); color:var(--maroon-800); font-size:.8rem; padding:8px 12px; border-radius:8px; margin-bottom:16px; }
+  .evidence-wrap { background:#eef6fb; border:1px solid #cfe6f3; border-radius:12px; padding:14px; margin-top:14px; }
+  .form-actions { position: sticky; bottom: 0; background: rgba(250,247,242,0.95); backdrop-filter: blur(4px); padding: 14px 0; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div id="topbar-mount"></div>
+
+<div class="page-wrap" style="max-width:860px;">
+  <div class="page-header">
+    <p><a href="../dashboard.html"><i class="fa-solid fa-arrow-right"></i> رجوع للوحة التحكم</a></p>
+    <h2><i class="fa-solid fa-star"></i> الأثر وقصص النجاح</h2>
+  </div>
+
+  <div class="privacy-note">
+    <i class="fa-solid fa-shield-halved"></i> يرجى وصف المستفيدة بصفة عامة (مثل "معلمة حلقة" أو "طالبة بالمستوى الثاني") دون ذكر اسمها الصريح، حفاظًا على الخصوصية.
+  </div>
+
+  <div id="storiesContainer"></div>
+
+  <button type="button" class="btn-add mb-4" id="addStoryBtn">
+    <i class="fa-solid fa-plus"></i> إضافة قصة نجاح
+  </button>
+
+  <div class="form-actions d-flex justify-content-between">
+    <span class="text-muted small" id="lastSaved"></span>
+    <button type="button" class="btn-primary" id="saveBtn" style="width:auto; padding:12px 32px;">
+      <i class="fa-solid fa-floppy-disk"></i> حفظ القصص
+    </button>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "../js/auth.js";
+  import { renderTopbar } from "../js/components/topbar.js";
+  import { getOrCreateDraftReport, loadReport, saveArraySection } from "../js/report-state.js";
+  import { showSaveToast } from "../js/components/form-helpers.js";
+  import { RepeatableList } from "../js/components/repeatable-list.js";
+
+  let reportId, list;
+
+  requireAuth(async (profile) => {
+    renderTopbar(profile, { homeHref: "../dashboard.html" });
+    reportId = await getOrCreateDraftReport(profile);
+    initList();
+    const report = await loadReport(reportId);
+    list.setItems(report?.impactStories || []);
+    document.getElementById("saveBtn").addEventListener("click", onSave);
+  });
+
+  function initList() {
+    const container = document.getElementById("storiesContainer");
+    list = new RepeatableList({
+      container,
+      itemLabel: "قصة نجاح",
+      itemFactory: () => ({
+        title: "", beneficiaryDesc: "", beforeState: "", intervention: "",
+        afterState: "", hasEvidence: false, evidenceLink: "", publishable: "no"
+      }),
+      renderItem: (item, i) => renderCard(item, i),
+      onAfterRender: (item, i, card) => bindCard(item, i, card)
+    });
+    document.getElementById("addStoryBtn").addEventListener("click", () => list.addItem());
+  }
+
+  function renderCard(item, i) {
+    return `
+    <div class="card-item" data-item-index="${i}">
+      <div class="card-item-head">
+        <span class="title">قصة ${i + 1}${item.title ? ": " + item.title : ""}</span>
+        <button type="button" class="btn-remove" data-action="remove-item"><i class="fa-solid fa-trash"></i> حذف</button>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="field-label">عنوان القصة</label>
+          <input type="text" class="form-control" data-field="title" value="${escapeAttr(item.title)}">
+        </div>
+        <div class="col-12">
+          <label class="field-label">وصف عام للمستفيدة (دون اسم صريح)</label>
+          <input type="text" class="form-control" data-field="beneficiaryDesc" value="${escapeAttr(item.beneficiaryDesc)}">
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">الوضع قبل التدخل</label>
+          <textarea class="form-control" rows="2" data-field="beforeState">${escapeHtml(item.beforeState)}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">التدخل الذي تم</label>
+          <textarea class="form-control" rows="2" data-field="intervention">${escapeHtml(item.intervention)}</textarea>
+        </div>
+        <div class="col-12">
+          <label class="field-label">الوضع بعد التدخل (الأثر)</label>
+          <textarea class="form-control" rows="2" data-field="afterState">${escapeHtml(item.afterState)}</textarea>
+        </div>
+
+        <div class="col-md-6">
+          <div class="form-check mt-2">
+            <input type="checkbox" class="form-check-input" data-field="hasEvidence" ${item.hasEvidence ? "checked" : ""}>
+            <label class="form-check-label">تم توثيق القصة بشاهد (صورة/فيديو/شهادة)</label>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">هل يمكن نشرها إعلاميًا؟</label>
+          <select class="form-control" data-field="publishable">
+            <option value="no" ${item.publishable==="no"?"selected":""}>لا</option>
+            <option value="yes" ${item.publishable==="yes"?"selected":""}>نعم، بموافقة المستفيدة</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="evidence-link-section"></div>
+    </div>`;
+  }
+
+  function bindCard(item, i, card) {
+    if (!card) return;
+    const section = card.querySelector(".evidence-link-section");
+    if (item.hasEvidence) {
+      section.innerHTML = `
+        <div class="evidence-wrap">
+          <label class="field-label"><i class="fa-solid fa-paperclip"></i> رابط الشاهد</label>
+          <input type="url" class="form-control" data-field="evidenceLink" value="${escapeAttr(item.evidenceLink)}" placeholder="https://">
+        </div>`;
+    } else {
+      section.innerHTML = "";
+    }
+  }
+
+  function escapeAttr(v) { return v === undefined || v === null ? "" : String(v).replace(/"/g, "&quot;"); }
+  function escapeHtml(v) { return v === undefined || v === null ? "" : String(v).replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  async function onSave() {
+    try {
+      await saveArraySection(reportId, "impactStories", list.getItems());
+      showSaveToast(`تم حفظ ${list.getItems().length} قصة نجاح بنجاح`);
+      document.getElementById("lastSaved").textContent = "آخر حفظ: " + new Date().toLocaleString("ar-SA");
+    } catch (err) {
+      console.error(err);
+      showSaveToast("تعذر الحفظ، حاولي مجددًا", true);
+    }
+  }
+</script>
+</body>
+</html>
