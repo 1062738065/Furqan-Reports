@@ -456,7 +456,7 @@ function resolveIndicatorRow(row, def) {
 // Paste the "Web app" URL you get after deploying Code.gs here. Until this is
 // filled in, the system keeps working exactly as before (saved locally in
 // the browser only) — nothing breaks, it just isn't shared across devices yet.
-const REPORTS_API_URL = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+const REPORTS_API_URL = "https://script.google.com/macros/s/AKfycbxYuT0E3McP55Y58VC0jQNqG8HsB0st2de47NfQlDLFL5QjclO-C5AhYuL_mFf1QA/exec";
 
 function isApiConfigured() {
   return typeof REPORTS_API_URL === "string" && REPORTS_API_URL.startsWith("http");
