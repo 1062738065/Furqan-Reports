@@ -452,32 +452,68 @@ function resolveIndicatorRow(row, def) {
   };
 }
 
-/* =============================== Mock auth (swap for a real backend later) =============================== */
-// Replace this with a real users table / auth provider when a database is connected.
+/* =============================== Backend connection (Google Sheets via Apps Script) =============================== */
+// Paste the "Web app" URL you get after deploying Code.gs here. Until this is
+// filled in, the system keeps working exactly as before (saved locally in
+// the browser only) — nothing breaks, it just isn't shared across devices yet.
+const REPORTS_API_URL = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+
+function isApiConfigured() {
+  return typeof REPORTS_API_URL === "string" && REPORTS_API_URL.startsWith("http");
+}
+
+// Talks to the Apps Script web app. Uses a text/plain body on purpose (not
+// application/json) so the browser sends it as a "simple request" and skips
+// the CORS pre-flight OPTIONS call — Apps Script web apps don't answer
+// OPTIONS, so a pre-flighted request would just fail silently.
+async function callSheetsApi(action, payload = {}) {
+  if (!isApiConfigured()) return null;
+  try {
+    const res = await fetch(REPORTS_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error("Sheets API error:", e);
+    return null;
+  }
+}
+
+/* =============================== Mock auth (used only until the Google Sheet is connected / as an offline fallback) =============================== */
 const MOCK_USERS = [
   { username: "admin", password: "admin123", role: "admin", name: "مديرة النظام" },
   { username: "unit1", password: "1234", role: "user", name: "مسؤولة الوحدة", unitId: "seed-1" },
 ];
 
+// Tries the "المستخدمون" sheet first (real accounts, shared across every
+// device); if the backend isn't connected yet or the request fails, falls
+// back to the local test accounts above so the system still works offline.
+async function loginUser(username, password) {
+  const remote = await callSheetsApi("login", { username: username.trim(), password });
+  if (remote && remote.ok && remote.user) return { user: remote.user };
+  if (remote && remote.ok === false) return { error: remote.error || "اسم المستخدم أو كلمة السر غير صحيحة" };
+  const match = MOCK_USERS.find((u) => u.username === username.trim() && u.password === password);
+  if (match) return { user: match };
+  return { error: "اسم المستخدم أو كلمة السر غير صحيحة" };
+}
+
 /* =============================== Data layer =============================== */
-// Everything below talks to `storage` only. Swap the bodies of these
-// functions for real API calls later — nothing above this layer needs to change.
+// Everything below talks to `storage` only — nothing above this layer needs
+// to change now that it's wired to a real backend.
 //
-// `window.storage` only exists inside Claude.ai's artifact viewer. On any
-// other hosting (Lovable, Vercel, your own server, etc.) it's simply
-// undefined, so every save/read would silently do nothing — which is why
-// data looked like it "disappeared" after leaving and coming back. This
-// wrapper uses window.storage when it's present, and transparently falls
-// back to the browser's own localStorage everywhere else, so saving works
-// the same way regardless of where this file ends up running.
+// Every value is saved to localStorage immediately (so nothing is ever lost,
+// even offline or if the network call fails) and, when REPORTS_API_URL is
+// configured, mirrored to a "البيانات" key/value sheet in Google Sheets via
+// Code.gs — so the same data shows up on every device/browser that logs in.
 const storage = {
   async get(key) {
-    if (typeof window !== "undefined" && window.storage && typeof window.storage.get === "function") {
-      try {
-        return await window.storage.get(key, false);
-      } catch (e) {
-        // fall through to localStorage
-      }
+    const remote = await callSheetsApi("get", { key });
+    if (remote && remote.ok && remote.value != null) {
+      if (typeof localStorage !== "undefined") localStorage.setItem(key, remote.value);
+      return { key, value: remote.value };
     }
     if (typeof localStorage !== "undefined") {
       const value = localStorage.getItem(key);
@@ -486,32 +522,14 @@ const storage = {
     return null;
   },
   async set(key, value) {
-    if (typeof window !== "undefined" && window.storage && typeof window.storage.set === "function") {
-      try {
-        return await window.storage.set(key, value, false);
-      } catch (e) {
-        // fall through to localStorage
-      }
-    }
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(key, value);
-      return { key, value };
-    }
-    return null;
+    if (typeof localStorage !== "undefined") localStorage.setItem(key, value);
+    await callSheetsApi("set", { key, value });
+    return { key, value };
   },
   async delete(key) {
-    if (typeof window !== "undefined" && window.storage && typeof window.storage.delete === "function") {
-      try {
-        return await window.storage.delete(key, false);
-      } catch (e) {
-        // fall through to localStorage
-      }
-    }
-    if (typeof localStorage !== "undefined") {
-      localStorage.removeItem(key);
-      return { key, deleted: true };
-    }
-    return null;
+    if (typeof localStorage !== "undefined") localStorage.removeItem(key);
+    await callSheetsApi("delete", { key });
+    return { key, deleted: true };
   },
 };
 
@@ -1005,16 +1023,20 @@ function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const match = MOCK_USERS.find((u) => u.username === username.trim() && u.password === password);
-    if (!match) {
-      setError("اسم المستخدم أو كلمة السر غير صحيحة");
+    if (loading) return;
+    setLoading(true);
+    setError("");
+    const result = await loginUser(username, password);
+    setLoading(false);
+    if (result.error || !result.user) {
+      setError(result.error || "اسم المستخدم أو كلمة السر غير صحيحة");
       return;
     }
-    setError("");
-    onLogin(match);
+    onLogin(result.user);
   };
 
   return (
@@ -1089,6 +1111,7 @@ function LoginPage({ onLogin }) {
             <button
               type="submit"
               className="prs-btn"
+              disabled={loading}
               style={{
                 width: "100%",
                 padding: "13px",
@@ -1098,7 +1121,8 @@ function LoginPage({ onLogin }) {
                 color: "#fff",
                 fontSize: 14.5,
                 fontWeight: 800,
-                cursor: "pointer",
+                cursor: loading ? "default" : "pointer",
+                opacity: loading ? 0.7 : 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1107,13 +1131,15 @@ function LoginPage({ onLogin }) {
               }}
             >
               <LogIn size={17} />
-              تسجيل الدخول
+              {loading ? "جارِ الدخول..." : "تسجيل الدخول"}
             </button>
           </form>
         </div>
 
         <div style={{ textAlign: "center", fontSize: 11, color: SUBTLE, marginTop: 16 }}>
-          بيانات تجريبية للاختبار — مديرة النظام: admin / admin123 — موظفة وحدة: unit1 / 1234
+          {isApiConfigured()
+            ? "الحسابات مرتبطة بقوقل شيت — راجعي ورقة \"المستخدمون\""
+            : "بيانات تجريبية للاختبار (لم يُربط قوقل شيت بعد) — مديرة النظام: admin / admin123 — موظفة وحدة: unit1 / 1234"}
         </div>
       </div>
     </div>
