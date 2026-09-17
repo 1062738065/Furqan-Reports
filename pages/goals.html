@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الأهداف والمستهدفات | نظام توثيق الأداء - فرقان</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+  .form-section { background:#fff; border-radius:14px; padding:22px; box-shadow:var(--shadow-card); border:1px solid var(--border); margin-bottom:20px; }
+  .form-section h4 { color:var(--maroon-900); font-size:1.02rem; margin-bottom:16px; border-bottom:2px solid var(--gold-100); padding-bottom:10px; }
+  .req::after { content:" *"; color:var(--status-fail); }
+  .form-actions { position: sticky; bottom: 0; background: rgba(250,247,242,0.95); backdrop-filter: blur(4px); padding: 14px 0; margin-top: 10px; }
+  .multi-check { max-height: 180px; overflow-y: auto; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; }
+  .char-counter { font-size: 0.76rem; color: var(--text-muted); text-align: left; margin-top: 4px; }
+  .range-display { font-weight: 800; color: var(--maroon-800); font-size: 1.1rem; }
+</style>
+</head>
+<body>
+
+<div id="topbar-mount"></div>
+
+<div class="page-wrap" style="max-width:820px;">
+  <div class="page-header">
+    <p><a href="../dashboard.html"><i class="fa-solid fa-arrow-right"></i> رجوع للوحة التحكم</a></p>
+    <h2><i class="fa-solid fa-bullseye"></i> الأهداف والمستهدفات</h2>
+  </div>
+
+  <form id="goalsForm">
+
+    <div class="form-section">
+      <h4>الهدف المرتبط بالخطة الاستراتيجية</h4>
+      <select class="form-control" id="strategicGoal" required></select>
+    </div>
+
+    <div class="form-section">
+      <h4>الهدف التشغيلي للوحدة <span class="text-muted small">(يمكن اختيار أكثر من هدف)</span></h4>
+      <div class="multi-check" id="operationalGoals"></div>
+    </div>
+
+    <div class="form-section">
+      <h4>مستوى تحقق الهدف</h4>
+      <select class="form-control" id="achievementLevel" required>
+        <option value="" disabled selected>اختاري...</option>
+        <option>تحقق بالكامل</option>
+        <option>تحقق بدرجة مرتفعة</option>
+        <option>تحقق جزئيًا</option>
+        <option>لم يتحقق</option>
+        <option>لم يبدأ</option>
+        <option>أجل بقرار</option>
+      </select>
+    </div>
+
+    <div class="form-section">
+      <h4>نسبة تحقق الهدف</h4>
+      <input type="range" class="form-range" id="achievementRatio" min="0" max="100" value="0">
+      <div class="range-display"><span id="ratioValue">0</span>%</div>
+    </div>
+
+    <div class="form-section">
+      <h4>تفسير مستوى التحقق</h4>
+      <textarea class="form-control" id="achievementExplanation" rows="4" maxlength="300"></textarea>
+      <div class="char-counter" id="explanationCounter">0 / 300 حرف</div>
+    </div>
+
+    <div class="form-section">
+      <h4>دليل تحقق الهدف</h4>
+      <div class="row g-2">
+        <div class="col-md-6 form-check">
+          <input class="form-check-input" type="checkbox" value="رقم مؤشر" id="ev1">
+          <label class="form-check-label" for="ev1">رقم مؤشر</label>
+        </div>
+        <div class="col-md-6 form-check">
+          <input class="form-check-input" type="checkbox" value="نتيجة أداة قياس" id="ev2">
+          <label class="form-check-label" for="ev2">نتيجة أداة قياس</label>
+        </div>
+        <div class="col-md-6 form-check">
+          <input class="form-check-input" type="checkbox" value="رابط شاهد" id="ev3">
+          <label class="form-check-label" for="ev3">رابط شاهد</label>
+        </div>
+        <div class="col-md-6 form-check">
+          <input class="form-check-input" type="checkbox" value="سجل رسمي" id="ev4">
+          <label class="form-check-label" for="ev4">سجل رسمي</label>
+        </div>
+        <div class="col-md-6 form-check">
+          <input class="form-check-input" type="checkbox" value="تقرير متابعة" id="ev5">
+          <label class="form-check-label" for="ev5">تقرير متابعة</label>
+        </div>
+        <div class="col-md-6 form-check">
+          <input class="form-check-input" type="checkbox" value="أخرى" id="ev6">
+          <label class="form-check-label" for="ev6">أخرى</label>
+        </div>
+      </div>
+      <div class="d-none mt-2" id="evOtherWrap">
+        <input type="text" class="form-control" id="evOtherText" placeholder="حددي الدليل...">
+      </div>
+    </div>
+
+    <div class="form-actions d-flex justify-content-between">
+      <span class="text-muted small" id="lastSaved"></span>
+      <button type="submit" class="btn-primary" style="width:auto; padding:12px 32px;">
+        <i class="fa-solid fa-floppy-disk"></i> حفظ البيانات
+      </button>
+    </div>
+  </form>
+</div>
+
+<script type="module">
+  import { requireAuth } from "../js/auth.js";
+  import { renderTopbar } from "../js/components/topbar.js";
+  import { getOrCreateDraftReport, loadReport, saveSection } from "../js/report-state.js";
+  import { showSaveToast, bindCharCounter } from "../js/components/form-helpers.js";
+  import { STRATEGIC_GOALS, OPERATIONAL_GOALS } from "../js/components/org-data.js";
+
+  let reportId;
+
+  requireAuth(async (profile) => {
+    renderTopbar(profile, { homeHref: "../dashboard.html" });
+    reportId = await getOrCreateDraftReport(profile);
+    initSelects();
+    bindLogic();
+    await hydrateForm();
+  });
+
+  function initSelects() {
+    document.getElementById("strategicGoal").innerHTML =
+      `<option value="" disabled selected>اختاري...</option>` +
+      STRATEGIC_GOALS.map(g => `<option value="${g}">${g}</option>`).join("");
+
+    document.getElementById("operationalGoals").innerHTML =
+      OPERATIONAL_GOALS.map((g, i) => `
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="${g}" id="og${i}">
+          <label class="form-check-label" for="og${i}">${g}</label>
+        </div>
+      `).join("");
+  }
+
+  function bindLogic() {
+    bindCharCounter("achievementExplanation", "explanationCounter", 300);
+
+    const ratio = document.getElementById("achievementRatio");
+    ratio.addEventListener("input", () => {
+      document.getElementById("ratioValue").textContent = ratio.value;
+    });
+
+    document.getElementById("ev6").addEventListener("change", (e) => {
+      document.getElementById("evOtherWrap").classList.toggle("d-none", !e.target.checked);
+    });
+
+    document.getElementById("goalsForm").addEventListener("submit", onSubmit);
+  }
+
+  async function hydrateForm() {
+    const report = await loadReport(reportId);
+    const d = report?.goals;
+    if (!d || Object.keys(d).length === 0) return;
+
+    if (d.strategicGoal) document.getElementById("strategicGoal").value = d.strategicGoal;
+    (d.operationalGoals || []).forEach(g => {
+      const cb = [...document.querySelectorAll("#operationalGoals input")].find(c => c.value === g);
+      if (cb) cb.checked = true;
+    });
+    if (d.achievementLevel) document.getElementById("achievementLevel").value = d.achievementLevel;
+    if (d.achievementRatio !== undefined) {
+      document.getElementById("achievementRatio").value = d.achievementRatio;
+      document.getElementById("ratioValue").textContent = d.achievementRatio;
+    }
+    if (d.achievementExplanation) {
+      document.getElementById("achievementExplanation").value = d.achievementExplanation;
+      document.getElementById("achievementExplanation").dispatchEvent(new Event("input"));
+    }
+    (d.evidence || []).forEach(v => {
+      const cb = [...document.querySelectorAll('.form-section input[type="checkbox"]')].find(c => c.value === v);
+      if (cb) { cb.checked = true; cb.dispatchEvent(new Event("change")); }
+    });
+    if (d.evidenceOther) document.getElementById("evOtherText").value = d.evidenceOther;
+  }
+
+  async function onSubmit(e) {
+    e.preventDefault();
+
+    const operationalGoals = [...document.querySelectorAll("#operationalGoals input:checked")].map(c => c.value);
+    const evidence = [...document.querySelectorAll('.form-section input[type="checkbox"]:checked')]
+      .map(c => c.value)
+      .filter(v => !operationalGoals.includes(v));
+
+    const data = {
+      strategicGoal: document.getElementById("strategicGoal").value,
+      operationalGoals,
+      achievementLevel: document.getElementById("achievementLevel").value,
+      achievementRatio: Number(document.getElementById("achievementRatio").value),
+      achievementExplanation: document.getElementById("achievementExplanation").value,
+      evidence,
+      evidenceOther: document.getElementById("evOtherText").value || ""
+    };
+
+    try {
+      await saveSection(reportId, "goals", data);
+      showSaveToast("تم حفظ الأهداف والمستهدفات بنجاح");
+      document.getElementById("lastSaved").textContent = "آخر حفظ: " + new Date().toLocaleString("ar-SA");
+    } catch (err) {
+      console.error(err);
+      showSaveToast("تعذر الحفظ، حاولي مجددًا", true);
+    }
+  }
+</script>
+</body>
+</html>

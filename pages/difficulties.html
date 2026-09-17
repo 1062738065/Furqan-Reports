@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الصعوبات والتحديات | نظام توثيق الأداء - فرقان</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+  .card-item { border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px; background:#fffdf8; box-shadow: var(--shadow-card); }
+  .card-item .card-item-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .card-item .card-item-head .title { font-weight:700; color: var(--maroon-900); }
+  .btn-remove { background:transparent; border:none; color:var(--status-fail); cursor:pointer; font-size:.9rem; }
+  .field-label { font-size:.82rem; font-weight:600; margin-bottom:4px; display:block; }
+  .support-box { background:#fdf3e6; border:1px solid #f3d9a8; border-radius:12px; padding:14px; margin-top:14px; }
+  .support-box .sb-title { color:var(--status-warn); font-weight:700; font-size:.88rem; margin-bottom:10px; }
+  .form-actions { position: sticky; bottom: 0; background: rgba(250,247,242,0.95); backdrop-filter: blur(4px); padding: 14px 0; margin-top: 10px; }
+  .level-pill { padding: 3px 11px; border-radius: 999px; font-size: .76rem; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="topbar-mount"></div>
+
+<div class="page-wrap" style="max-width:860px;">
+  <div class="page-header">
+    <p><a href="../dashboard.html"><i class="fa-solid fa-arrow-right"></i> رجوع للوحة التحكم</a></p>
+    <h2><i class="fa-solid fa-triangle-exclamation"></i> الصعوبات والتحديات</h2>
+    <p>حقول "الدعم المطلوب" تظهر تلقائيًا عند اختيار أن الصعوبة ما زالت قائمة.</p>
+  </div>
+
+  <div id="difficultiesContainer"></div>
+
+  <button type="button" class="btn-add mb-4" id="addDifficultyBtn">
+    <i class="fa-solid fa-plus"></i> إضافة صعوبة
+  </button>
+
+  <div class="form-actions d-flex justify-content-between">
+    <span class="text-muted small" id="lastSaved"></span>
+    <button type="button" class="btn-primary" id="saveBtn" style="width:auto; padding:12px 32px;">
+      <i class="fa-solid fa-floppy-disk"></i> حفظ الصعوبات
+    </button>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "../js/auth.js";
+  import { renderTopbar } from "../js/components/topbar.js";
+  import { getOrCreateDraftReport, loadReport, saveArraySection } from "../js/report-state.js";
+  import { showSaveToast } from "../js/components/form-helpers.js";
+  import { RepeatableList } from "../js/components/repeatable-list.js";
+
+  let reportId, list;
+
+  const DOMAINS = [
+    "الموظفات","الإجراءات","الأنظمة التقنية","الميزانية","التجهيزات","المبنى",
+    "الحضور","التواصل","المستفيدات","البيانات","الصلاحيات","التنسيق بين الأقسام","الشراكات","أخرى"
+  ];
+  const LEVELS = [
+    { value: "low", label: "منخفض" },
+    { value: "medium", label: "متوسط" },
+    { value: "high", label: "مرتفع" },
+    { value: "critical", label: "حرج" }
+  ];
+  const SCOPES = [
+    "داخل الوحدة","مشتركة مع وحدة أخرى","تحتاج تدخل القسم",
+    "تحتاج قرار إدارة التعليم النسائي","تحتاج قرار الإدارة العليا","مرتبطة بجهة خارجية"
+  ];
+
+  requireAuth(async (profile) => {
+    renderTopbar(profile, { homeHref: "../dashboard.html" });
+    reportId = await getOrCreateDraftReport(profile);
+    initList();
+    const report = await loadReport(reportId);
+    list.setItems(report?.difficulties || []);
+    document.getElementById("saveBtn").addEventListener("click", onSave);
+  });
+
+  function initList() {
+    const container = document.getElementById("difficultiesContainer");
+    list = new RepeatableList({
+      container,
+      itemLabel: "صعوبة",
+      itemFactory: () => ({
+        domain: "", otherDomain: "", level: "medium", scope: "",
+        description: "", rootCause: "", impact: "", startDate: "",
+        recurred: "no", actionTaken: "", actionResult: "",
+        stillOngoing: "no", supportNeeded: "", proposedEntity: "", timeNeeded: ""
+      }),
+      renderItem: (item, i) => renderCard(item, i),
+      onAfterRender: (item, i, card) => bindCard(item, i, card)
+    });
+    document.getElementById("addDifficultyBtn").addEventListener("click", () => list.addItem());
+  }
+
+  function renderCard(item, i) {
+    return `
+    <div class="card-item" data-item-index="${i}">
+      <div class="card-item-head">
+        <span class="title">صعوبة ${i + 1}</span>
+        <button type="button" class="btn-remove" data-action="remove-item"><i class="fa-solid fa-trash"></i> حذف</button>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="field-label">مجال الصعوبة</label>
+          <select class="form-control" data-field="domain">
+            <option value="">اختاري...</option>
+            ${DOMAINS.map(d => `<option ${item.domain===d?"selected":""}>${d}</option>`).join("")}
+          </select>
+        </div>
+        <div class="col-md-6 ${item.domain==="أخرى"?"":"d-none"}" data-other-domain>
+          <label class="field-label">حددي المجال</label>
+          <input type="text" class="form-control" data-field="otherDomain" value="${escapeAttr(item.otherDomain)}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="field-label">مستوى الصعوبة</label>
+          <select class="form-control" data-field="level">
+            ${LEVELS.map(l => `<option value="${l.value}" ${item.level===l.value?"selected":""}>${l.label}</option>`).join("")}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">نطاق الصعوبة</label>
+          <select class="form-control" data-field="scope">
+            <option value="">اختاري...</option>
+            ${SCOPES.map(s => `<option ${item.scope===s?"selected":""}>${s}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="col-12">
+          <label class="field-label">وصف الصعوبة</label>
+          <textarea class="form-control" rows="2" data-field="description">${escapeHtml(item.description)}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">سببها الجذري</label>
+          <input type="text" class="form-control" data-field="rootCause" value="${escapeAttr(item.rootCause)}">
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">أثرها في الأداء</label>
+          <input type="text" class="form-control" data-field="impact" value="${escapeAttr(item.impact)}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="field-label">متى بدأت؟</label>
+          <input type="date" class="form-control" data-field="startDate" value="${escapeAttr(item.startDate)}">
+        </div>
+        <div class="col-md-4">
+          <label class="field-label">هل تكررت سابقًا؟</label>
+          <select class="form-control" data-field="recurred">
+            <option value="no" ${item.recurred==="no"?"selected":""}>لا</option>
+            <option value="yes" ${item.recurred==="yes"?"selected":""}>نعم</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="field-label">هل ما زالت قائمة؟</label>
+          <select class="form-control" data-field="stillOngoing">
+            <option value="no" ${item.stillOngoing==="no"?"selected":""}>لا، تم حلّها</option>
+            <option value="yes" ${item.stillOngoing==="yes"?"selected":""}>نعم، ما زالت قائمة</option>
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="field-label">الإجراء الذي اتخذته الوحدة</label>
+          <input type="text" class="form-control" data-field="actionTaken" value="${escapeAttr(item.actionTaken)}">
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">نتيجة الإجراء</label>
+          <input type="text" class="form-control" data-field="actionResult" value="${escapeAttr(item.actionResult)}">
+        </div>
+      </div>
+
+      <div class="support-section"></div>
+    </div>`;
+  }
+
+  function bindCard(item, i, card) {
+    if (!card) return;
+
+    const otherWrap = card.querySelector("[data-other-domain]");
+    if (otherWrap) otherWrap.classList.toggle("d-none", item.domain !== "أخرى");
+
+    const supportSection = card.querySelector(".support-section");
+    if (item.stillOngoing === "yes") {
+      supportSection.innerHTML = `
+        <div class="support-box">
+          <div class="sb-title"><i class="fa-solid fa-hand-holding-heart"></i> حقول تظهر تلقائيًا لأن الصعوبة ما زالت قائمة</div>
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="field-label">الدعم أو القرار المطلوب</label>
+              <input type="text" class="form-control" data-field="supportNeeded" value="${escapeAttr(item.supportNeeded)}">
+            </div>
+            <div class="col-md-4">
+              <label class="field-label">الجهة المقترحة للمعالجة</label>
+              <input type="text" class="form-control" data-field="proposedEntity" value="${escapeAttr(item.proposedEntity)}">
+            </div>
+            <div class="col-md-4">
+              <label class="field-label">المدة اللازمة للمعالجة</label>
+              <input type="text" class="form-control" data-field="timeNeeded" value="${escapeAttr(item.timeNeeded)}">
+            </div>
+          </div>
+        </div>`;
+    } else {
+      supportSection.innerHTML = "";
+    }
+  }
+
+  function escapeAttr(v) {
+    if (v === undefined || v === null) return "";
+    return String(v).replace(/"/g, "&quot;");
+  }
+  function escapeHtml(v) {
+    if (v === undefined || v === null) return "";
+    return String(v).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  async function onSave() {
+    try {
+      await saveArraySection(reportId, "difficulties", list.getItems());
+      showSaveToast(`تم حفظ ${list.getItems().length} صعوبة بنجاح`);
+      document.getElementById("lastSaved").textContent = "آخر حفظ: " + new Date().toLocaleString("ar-SA");
+    } catch (err) {
+      console.error(err);
+      showSaveToast("تعذر الحفظ، حاولي مجددًا", true);
+    }
+  }
+</script>
+</body>
+</html>

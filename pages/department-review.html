@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مراجعة تقارير القسم | نظام توثيق الأداء - فرقان</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+  .report-card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px; box-shadow:var(--shadow-card); }
+  .report-card h5 { color:var(--maroon-900); margin-bottom:6px; }
+  .report-meta { font-size:.82rem; color:var(--text-muted); margin-bottom:12px; }
+  .action-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .btn-approve { background:var(--status-done); color:#fff; border:none; border-radius:10px; padding:9px 18px; font-weight:700; font-size:.85rem; }
+  .btn-return { background:var(--status-warn); color:#fff; border:none; border-radius:10px; padding:9px 18px; font-weight:700; font-size:.85rem; }
+  .btn-reject { background:var(--status-fail); color:#fff; border:none; border-radius:10px; padding:9px 18px; font-weight:700; font-size:.85rem; }
+  .note-input { width:100%; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<div id="topbar-mount"></div>
+
+<div class="page-wrap" style="max-width:900px;">
+  <div class="page-header">
+    <h2><i class="fa-solid fa-clipboard-check"></i> مراجعة تقارير القسم</h2>
+    <p>التقارير التي بانتظار اعتمادك كمديرة قسم.</p>
+  </div>
+
+  <div id="reportsList"></div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "../js/auth.js";
+  import { renderTopbar } from "../js/components/topbar.js";
+  import { listReportsPendingForRole, approveReport, returnForEdit, rejectReport } from "../js/firebase/workflow.js";
+  import { showSaveToast } from "../js/components/form-helpers.js";
+
+  let profileRef;
+
+  requireAuth(async (profile) => {
+    profileRef = profile;
+    renderTopbar(profile, { homeHref: "../dashboard.html" });
+    await refresh();
+  });
+
+  async function refresh() {
+    const reports = await listReportsPendingForRole("dept_manager");
+    const list = document.getElementById("reportsList");
+    if (reports.length === 0) {
+      list.innerHTML = `<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>لا توجد تقارير بانتظار المراجعة حاليًا.</p></div>`;
+      return;
+    }
+    list.innerHTML = reports.map(r => renderCard(r)).join("");
+    reports.forEach(r => bindCard(r));
+  }
+
+  function renderCard(r) {
+    const bd = r.basicData || {};
+    return `
+    <div class="report-card" data-id="${r.id}">
+      <h5>تقرير: ${bd.departmentName || "بدون اسم قسم"} / ${bd.unitName || ""}</h5>
+      <div class="report-meta">
+        معدة التقرير: ${bd.preparerName || "-"} · الفترة: ${bd.periodType || "-"} ${bd.hijriYear || ""}
+        · عدد المؤشرات: ${(r.indicators || []).length} · عدد البرامج: ${(r.programs || []).length}
+      </div>
+      <textarea class="form-control note-input" placeholder="ملاحظات (اختياري)" rows="2"></textarea>
+      <div class="action-row">
+        <button class="btn-approve" data-action="approve"><i class="fa-solid fa-check"></i> اعتماد</button>
+        <button class="btn-return" data-action="return"><i class="fa-solid fa-rotate-left"></i> إعادة للتعديل</button>
+        <button class="btn-reject" data-action="reject"><i class="fa-solid fa-xmark"></i> رفض</button>
+      </div>
+    </div>`;
+  }
+
+  function bindCard(r) {
+    const card = document.querySelector(`[data-id="${r.id}"]`);
+    if (!card) return;
+    const note = card.querySelector(".note-input");
+
+    card.querySelector('[data-action="approve"]').addEventListener("click", () => handleAction(r.id, "approve", note.value));
+    card.querySelector('[data-action="return"]').addEventListener("click", () => {
+      if (!note.value.trim()) { showSaveToast("يرجى كتابة سبب الإعادة", true); return; }
+      handleAction(r.id, "return", note.value);
+    });
+    card.querySelector('[data-action="reject"]').addEventListener("click", () => {
+      if (!note.value.trim()) { showSaveToast("يرجى كتابة سبب الرفض", true); return; }
+      handleAction(r.id, "reject", note.value);
+    });
+  }
+
+  async function handleAction(reportId, action, note) {
+    try {
+      if (action === "approve") await approveReport(reportId, profileRef, note);
+      if (action === "return") await returnForEdit(reportId, profileRef, note);
+      if (action === "reject") await rejectReport(reportId, profileRef, note);
+      showSaveToast("تم تنفيذ الإجراء بنجاح");
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      showSaveToast("تعذر تنفيذ الإجراء", true);
+    }
+  }
+</script>
+</body>
+</html>

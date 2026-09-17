@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>المبادرات والممارسات النوعية | نظام توثيق الأداء - فرقان</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+  .card-item { border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px; background:#fffdf8; box-shadow: var(--shadow-card); }
+  .card-item .card-item-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .card-item .card-item-head .title { font-weight:700; color: var(--maroon-900); }
+  .btn-remove { background:transparent; border:none; color:var(--status-fail); cursor:pointer; font-size:.9rem; }
+  .field-label { font-size:.82rem; font-weight:600; margin-bottom:4px; display:block; }
+  .transfer-box { background:#e8f6ee; border:1px solid #c3e6cb; border-radius:12px; padding:14px; margin-top:14px; }
+  .transfer-box .tb-title { color:var(--status-done); font-weight:700; font-size:.88rem; margin-bottom:10px; }
+  .form-actions { position: sticky; bottom: 0; background: rgba(250,247,242,0.95); backdrop-filter: blur(4px); padding: 14px 0; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div id="topbar-mount"></div>
+
+<div class="page-wrap" style="max-width:860px;">
+  <div class="page-header">
+    <p><a href="../dashboard.html"><i class="fa-solid fa-arrow-right"></i> رجوع للوحة التحكم</a></p>
+    <h2><i class="fa-solid fa-lightbulb"></i> المبادرات والممارسات النوعية</h2>
+    <p>حقل "متطلبات التعميم" يظهر تلقائيًا عند اختيار أن المبادرة قابلة للتعميم على وحدات أخرى.</p>
+  </div>
+
+  <div id="initiativesContainer"></div>
+
+  <button type="button" class="btn-add mb-4" id="addInitiativeBtn">
+    <i class="fa-solid fa-plus"></i> إضافة مبادرة
+  </button>
+
+  <div class="form-actions d-flex justify-content-between">
+    <span class="text-muted small" id="lastSaved"></span>
+    <button type="button" class="btn-primary" id="saveBtn" style="width:auto; padding:12px 32px;">
+      <i class="fa-solid fa-floppy-disk"></i> حفظ المبادرات
+    </button>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "../js/auth.js";
+  import { renderTopbar } from "../js/components/topbar.js";
+  import { getOrCreateDraftReport, loadReport, saveArraySection } from "../js/report-state.js";
+  import { showSaveToast } from "../js/components/form-helpers.js";
+  import { RepeatableList } from "../js/components/repeatable-list.js";
+
+  let reportId, list;
+
+  const TYPES = ["مبادرة جديدة", "ممارسة نوعية قائمة"];
+  const STATUSES = ["فكرة", "قيد التنفيذ", "مكتملة", "متوقفة"];
+
+  requireAuth(async (profile) => {
+    renderTopbar(profile, { homeHref: "../dashboard.html" });
+    reportId = await getOrCreateDraftReport(profile);
+    initList();
+    const report = await loadReport(reportId);
+    list.setItems(report?.initiatives || []);
+    document.getElementById("saveBtn").addEventListener("click", onSave);
+  });
+
+  function initList() {
+    const container = document.getElementById("initiativesContainer");
+    list = new RepeatableList({
+      container,
+      itemLabel: "مبادرة",
+      itemFactory: () => ({
+        name: "", type: "مبادرة جديدة", goal: "", targetGroup: "", startDate: "",
+        status: "قيد التنفيذ", preliminaryResults: "", transferable: "no",
+        transferRequirements: "", responsibleEntity: "", supportNeeded: ""
+      }),
+      renderItem: (item, i) => renderCard(item, i),
+      onAfterRender: (item, i, card) => bindCard(item, i, card)
+    });
+    document.getElementById("addInitiativeBtn").addEventListener("click", () => list.addItem());
+  }
+
+  function renderCard(item, i) {
+    return `
+    <div class="card-item" data-item-index="${i}">
+      <div class="card-item-head">
+        <span class="title">مبادرة ${i + 1}${item.name ? ": " + item.name : ""}</span>
+        <button type="button" class="btn-remove" data-action="remove-item"><i class="fa-solid fa-trash"></i> حذف</button>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="field-label">اسم المبادرة</label>
+          <input type="text" class="form-control" data-field="name" value="${escapeAttr(item.name)}">
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">نوع المبادرة</label>
+          <select class="form-control" data-field="type">
+            ${TYPES.map(t => `<option ${item.type===t?"selected":""}>${t}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="field-label">الهدف منها</label>
+          <input type="text" class="form-control" data-field="goal" value="${escapeAttr(item.goal)}">
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">الفئة المستفيدة</label>
+          <input type="text" class="form-control" data-field="targetGroup" value="${escapeAttr(item.targetGroup)}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="field-label">تاريخ الانطلاق</label>
+          <input type="date" class="form-control" data-field="startDate" value="${escapeAttr(item.startDate)}">
+        </div>
+        <div class="col-md-4">
+          <label class="field-label">حالة المبادرة</label>
+          <select class="form-control" data-field="status">
+            ${STATUSES.map(s => `<option ${item.status===s?"selected":""}>${s}</option>`).join("")}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="field-label">الجهة المسؤولة</label>
+          <input type="text" class="form-control" data-field="responsibleEntity" value="${escapeAttr(item.responsibleEntity)}">
+        </div>
+
+        <div class="col-12">
+          <label class="field-label">نتائجها الأولية</label>
+          <textarea class="form-control" rows="2" data-field="preliminaryResults">${escapeHtml(item.preliminaryResults)}</textarea>
+        </div>
+
+        <div class="col-md-6">
+          <label class="field-label">هل هي قابلة للتعميم على وحدات أخرى؟</label>
+          <select class="form-control" data-field="transferable">
+            <option value="no" ${item.transferable==="no"?"selected":""}>لا</option>
+            <option value="yes" ${item.transferable==="yes"?"selected":""}>نعم</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="field-label">الدعم المطلوب لاستمرارها</label>
+          <input type="text" class="form-control" data-field="supportNeeded" value="${escapeAttr(item.supportNeeded)}">
+        </div>
+      </div>
+
+      <div class="transfer-section"></div>
+    </div>`;
+  }
+
+  function bindCard(item, i, card) {
+    if (!card) return;
+    const section = card.querySelector(".transfer-section");
+    if (item.transferable === "yes") {
+      section.innerHTML = `
+        <div class="transfer-box">
+          <div class="tb-title"><i class="fa-solid fa-share-nodes"></i> متطلبات التعميم (تظهر تلقائيًا)</div>
+          <input type="text" class="form-control" data-field="transferRequirements" value="${escapeAttr(item.transferRequirements)}" placeholder="ما الذي تحتاجه الوحدات الأخرى لتطبيق هذه الممارسة؟">
+        </div>`;
+    } else {
+      section.innerHTML = "";
+    }
+  }
+
+  function escapeAttr(v) { return v === undefined || v === null ? "" : String(v).replace(/"/g, "&quot;"); }
+  function escapeHtml(v) { return v === undefined || v === null ? "" : String(v).replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  async function onSave() {
+    try {
+      await saveArraySection(reportId, "initiatives", list.getItems());
+      showSaveToast(`تم حفظ ${list.getItems().length} مبادرة بنجاح`);
+      document.getElementById("lastSaved").textContent = "آخر حفظ: " + new Date().toLocaleString("ar-SA");
+    } catch (err) {
+      console.error(err);
+      showSaveToast("تعذر الحفظ، حاولي مجددًا", true);
+    }
+  }
+</script>
+</body>
+</html>
